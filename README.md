@@ -55,7 +55,7 @@ Contained are the files:
 
 .R 
 
-Uses the data files: .csv and .csv
+Uses the data file: .csv
 
 
 .R
@@ -76,11 +76,9 @@ Uses the data file: .csv
 
 Uses the data file: .rds
 
-script - produces the results presented in Table : Maternal-treatment-, sex-, and age- related differences in the androgen concentrations of meerkat offspring.
+[script] - produces Fig. 1 - 3 & S1, and the results presented in Table S1 - S2 & S4 - S5: Maternal-treatment-, sex-, and age- related differences in the hormone concentrations and weights of meerkat offspring.
 
-_script_a - produces Fig.  and the results presented in Table : 
-
-_pub_code_anon - produces the results presented in Table : 
+[script] - produces Fig. 4 and the results presented in Table S3: 
 
 All analyses were conducted in R - see manuscript for versions and packages used. All graphs in the manuscript were produced in R using ggplot2.
 
