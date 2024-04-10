@@ -12,10 +12,10 @@ Christine M. Drea (Department of Evolutionary Anthropology, Duke University, Dur
 
 Associate or co-investigators: 
 
-Charli S. Davies (School of Biological Sciences, University of East Anglia, Norwich Research Park, Norwich, NR4 7TJ, UK) / 
+Charli S. Davies (Department of Biological and Environmental Science, University of Jyväskylä, Jyväskylä, Finland) / 
 Caroline L. Shearer (Department of Evolutionary Anthropology, Duke University, Durham, NC 27708 USA) / 
 Lydia K. Greene (Duke Lemur Center, Duke University, Durham, NC 27705 USA) / 
-Jessica Mitchell (Nuffield Centre for International Health and Development, University of Leeds, Leeds, West Yorkshire, LS2 9JT UK) / 
+Jessica Mitchell (Nuffield Centre for International Health and Development, University of Leeds, Leeds, West Yorkshire, LS2 9JT UK) / Debbie Walsh (Kalahari Research Trust, Kuruman River Reserve, Northern Cape, South Africa) / Vivian Goerlich (Animals in Science and Society, Department of Population Health Sciences, Faculty of Veterinary Medicine, Utrecht University, Utrecht, the Netherlands) / 
 Tim H. Clutton-Brock (Department of Zoology, University of Cambridge, Cambridge, CB2 3EJ UK)
 
 Contact person for questions:
