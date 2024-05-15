@@ -57,9 +57,9 @@ hormone_weight_script_pub-may2024.Rmd
 
 Uses the data file: pup.a4.true.pub.csv
 
-.R
+MeerkatSurvival.R
 
-These three R code scripts all use the data file: .csv
+These three R code scripts all use the data file: MeerkatSurvival.csv
 
 
 hormone_weight_script_pub-may2024.Rmd  - produces Fig. 1 - 3 & S1-4, and the results presented in Table S1 - S2 & S4 - S5: Maternal-treatment-, sex-, and age- related differences in the hormone concentrations and weights of meerkat offspring.
