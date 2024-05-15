@@ -64,7 +64,7 @@ These three R code scripts all use the data file: MeerkatSurvival.csv
 
 hormone_weight_script_pub-may2024.Rmd  - produces Fig. 1 - 3 & S1-4, and the results presented in Table S1 - S2 & S4 - S5: Maternal-treatment-, sex-, and age- related differences in the hormone concentrations and weights of meerkat offspring.
 
-[script] - produces Fig. 4 and the results presented in Table S3: 
+MeerkatSurvival.R - produces Fig. 4 and the results presented in Table S3: 
 
 All analyses were conducted in R - see manuscript for versions and packages used. All graphs in the manuscript were produced in R using ggplot2.
 
