@@ -53,30 +53,16 @@ DATA SPECIFIC INFORMATION
 
 Contained are the files:
 
-.R 
+hormone_weight_script_pub-may2024.Rmd 
 
-Uses the data file: .csv
-
-
-.R
-
-.R
+Uses the data file: pup.a4.true.pub.csv
 
 .R
 
 These three R code scripts all use the data file: .csv
 
 
-.R [this has code to extract source data for figure]
-
-Uses the data file: .csv
-
-
-.r
-
-Uses the data file: .rds
-
-[script] - produces Fig. 1 - 3 & S1, and the results presented in Table S1 - S2 & S4 - S5: Maternal-treatment-, sex-, and age- related differences in the hormone concentrations and weights of meerkat offspring.
+hormone_weight_script_pub-may2024.Rmd  - produces Fig. 1 - 3 & S1-4, and the results presented in Table S1 - S2 & S4 - S5: Maternal-treatment-, sex-, and age- related differences in the hormone concentrations and weights of meerkat offspring.
 
 [script] - produces Fig. 4 and the results presented in Table S3: 
 
