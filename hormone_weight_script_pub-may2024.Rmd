@@ -1,0 +1,876 @@
+---
+title: "davies shearer et al. 2024"
+author: "Caroline Shearer"
+date: "2024-04-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(glmmTMB)
+```
+
+load and format dataset
+```{r}
+pup.a4 = read.csv("pup.a4.true.pub.csv", header=T, na.strings=c(""," ","NA","na"))
+#MO ~1-12
+pup.a4$KMP.ID<-as.factor(pup.a4$KMP.ID)
+pup.a4$Litter<-as.factor(pup.a4$Litter)
+pup.a4$Group<-as.factor(pup.a4$Group)
+pup.a4$Sex <- factor(pup.a4$Sex, levels = c("M", "F"))
+pup.a4$Treatment <- factor(pup.a4$Treatment, levels = c("C", "S", "F"))
+pup.a4 <- droplevels(pup.a4)
+
+
+
+
+is.factor(pup.a4$KMP.ID)
+is.factor(pup.a4$Sex)
+is.numeric(pup.a4$A4.ng.ml)
+#subset by complete cases, thus all models are run with COMPLETE CASES FOR CONDITION RESIDUALS AND RESPECTIVE HORMONE, NONE LACKING WEIGHT MEASUREMENTS INCLUDED
+cc.a4<-pup.a4[complete.cases(pup.a4$A4.ng.ml),]
+cc.E<-pup.a4[complete.cases(pup.a4$E.pg.ml),]
+#because there is only 1 value at month 1
+cc.E<- cc.E[ which(cc.E$Age.Months>1), ]
+cc.T<-pup.a4[complete.cases(pup.a4$T.ng.ml),]
+cc.IGF1<-pup.a4[complete.cases(pup.a4$IGF.1.ng.ml),]
+try.a4<-cc.a4[!cc.a4$KMP.ID=="VFM184",]
+```
+
+
+MODEL AND DIAGNOSTIC
+```{r}
+library(mgcv)
+#residuals of weight vs forearm length as an additional predictor
+#good or bad weight for their age
+
+#high correlation is supposedly between 0.7 and 0.9
+#correlation is 0.37, not super high
+cor(pup.a4$Average.Weight.5.days,pup.a4$Total.monthly.Rainfall, use = 'complete.obs')
+
+#correlation is 0.13, not super high
+cor(pup.a4$ConditionResiduals,pup.a4$Total.monthly.Rainfall, use = 'complete.obs')
+
+#correlation between weight and weight/hindfoot residuals is 0.37
+cor(pup.a4$ConditionResiduals,pup.a4$Average.Weight.5.days, use = 'complete.obs')
+
+#weight and age highly correlated
+cor(pup.a4$Average.Weight.5.days,pup.a4$Age.Months, use = 'complete.obs')
+
+
+#condition and age slightly correlated 0.27
+cor(pup.a4$ConditionResiduals,pup.a4$Age.Months, use = 'complete.obs')
+
+#condition and age slightly correlated 0.45
+cor(pup.a4$Total.monthly.Rainfall,pup.a4$Age.Months, use = 'complete.obs')
+
+cor(pup.a4$Group.size,pup.a4$Age.Months, use = 'complete.obs')
+
+cor(pup.a4$Group.size,pup.a4$Total.monthly.Rainfall, use = 'complete.obs')
+
+cor(pup.a4$Group.size,pup.a4$ConditionResiduals, use = 'complete.obs')
+
+
+#A4 all yrs
+#arguement for using a gamma distribution https://stats.stackexchange.com/questions/568135/heteroscedasticity-in-palaeolimnology-with-gams
+
+library(nlme)
+
+A4gam1 <- mgcv::gam(A4.ng.ml ~ s(Age.Months, k=5, by=Sex) +Sex*Treatment+s(Total.monthly.Rainfall,k=3,by=Sex) +s(ConditionResiduals, k= 7) + s(Group.size, k=3) +s(KMP.ID, bs = "re") + s(Litter, bs ="re"), family = Gamma(link='log'),method="REML", data = cc.a4)
+
+A4gam2 <- mgcv::gam(A4.ng.ml ~ s(Age.Months, k=5, by=Treatment) +Sex*Treatment+s(Total.monthly.Rainfall,k=3,by=Sex) +s(ConditionResiduals, k= 7) + s(Group.size, k=3) +s(KMP.ID, bs = "re") + s(Litter, bs ="re"), family = Gamma(link='log'),method="REML", data = cc.a4)
+
+A4gam3 <- mgcv::gam(A4.ng.ml ~ s(Age.Months, k=5) +Sex*Treatment+s(Total.monthly.Rainfall,k=3,by=Sex) +s(ConditionResiduals, k= 7) + s(Group.size, k=3) +s(KMP.ID, bs = "re") + s(Litter, bs ="re"), family = Gamma(link='log'), method="REML",data = cc.a4)
+
+A4gam4 <- mgcv::gam(A4.ng.ml ~ s(Age.Months, k=5, by=Treatment)+s(Age.Months, k=5, by=Sex)+Sex*Treatment+s(Total.monthly.Rainfall,k=3,by=Sex) + s(Group.size, k=3)+s(ConditionResiduals, k= 7) +s(KMP.ID, bs = "re") + s(Litter, bs ="re"), family = Gamma(link='log'), method="REML",data = cc.a4)
+
+AIC(A4gam1,A4gam2, A4gam3,A4gam4) #just confirms that sex is the best interaction (sex+trt is equivalent but impact of trt approaches zero as indicated by edf value)
+
+#remove rainfall x sex int, trt sex, groupsize for explaining less than <1%
+A4gam5 <- mgcv::gam(A4.ng.ml ~ s(Age.Months, k=5, by=Sex) +Sex+Treatment+s(Total.monthly.Rainfall,k=3) +s(ConditionResiduals, k= 7) +s(KMP.ID, bs = "re") + s(Litter, bs ="re"), family = Gamma(link='log'),method="REML", data = cc.a4)
+summary(A4gam5)
+
+cc.a412<- cc.a4[ which(cc.a4$Age.Months==12), ]
+glma412<-glmmTMB::glmmTMB(A4.ng.ml ~ Sex +Treatment + Total.monthly.Rainfall + ConditionResiduals + (1|KMP.ID), family = Gamma(link='log'), data = cc.a412)
+
+summary(glma412)
+
+#the tail ends of the smooth dont have stand out characteristics/grouping that explain why they dont fit a qqline perfectly, thus we dont worry about them ~duke stats consulting
+#we determine this by pulling out the smooth estimates and joining the ids with the dataset to see the characteristics of the most extreme random effect ids
+#library("gratia")
+#rand1<-smooth_estimates(A4gam2, "s(KMP.ID)")
+#library(dplyr)
+#outlier_check<-full_join(rand1,cc.a4, by="KMP.ID")
+
+library(mgcViz)
+prettycheck<-getViz(A4gam5)
+check(prettycheck)
+#k values are all apropriate and minimum to avoid overdispersion
+k.check(A4gam5,subsample=5000, n.rep=400)
+#gam.check(A4gam1) #essentially covered by pretty check
+library('DHARMa')
+simulateResiduals(A4gam5,plot = T)
+
+    DHARMa::testDispersion(A4gam5)
+    DHARMa::testDispersion(A4gam5, type="PearsonChisq", 
+         alternative="greater")
+
+    
+    summary(A4gam5)
+
+#library(ggplot2)
+#library(dplyr)
+#library(mgcv)
+#library(tidymv)
+#library(sjPlot)
+
+    #ways to change the plot_smooths lines
+    #learned here https://stackoverflow.com/questions/47878979/how-to-pass-manual-colour-scale-to-geom-smooth-in-ggplot
+    #learned changing legend shape size here:
+    #https://www.geeksforgeeks.org/control-size-of-ggplot2-legend-items-in-r/
+    #learned subscript here:
+    #https://stackoverflow.com/questions/10156417/subscripts-in-plots-in-r
+    #learned plot_smooths here
+    #https://cran.r-project.org/web/packages/tidymv/vignettes/plot-smooths.html
+    
+#https://stackoverflow.com/questions/74866920/plotting-non-transformed-interpretable-output-and-raw-data-from-gam-mgcv-r
+#use this for the plots ^^
+#related
+#https://stackoverflow.com/questions/67077306/plotting-output-of-gam-model/67096214#67096214
+
+#E all yrs
+Egam1 <- mgcv::gam(E.pg.ml ~ s(Age.Months, k=5, by=Sex)+Sex+Treatment + s(Total.monthly.Rainfall, k=3, by=Sex) +s(ConditionResiduals, k=4)+ s(Group.size, k=3)+s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = Gamma(link='log'), method="REML", data = cc.E)
+
+Egam2 <- mgcv::gam(E.pg.ml ~ s(Age.Months, k=5, by=Treatment)+Sex+Treatment + s(Total.monthly.Rainfall, k=3, by=Sex) +s(ConditionResiduals,k=4)+ s(Group.size, k=3)+ s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = Gamma(link='log'), method="REML", data = cc.E)
+
+Egam3 <- mgcv::gam(E.pg.ml ~ s(Age.Months, k=5) +Sex+Treatment+ s(Total.monthly.Rainfall, k=3, by=Sex) +s(ConditionResiduals, k=4)+ s(Group.size, k=4)+ s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = Gamma(link='log'), method="REML", data = cc.E)
+
+Egam4 <- mgcv::gam(E.pg.ml ~ s(Age.Months, k=5, by=Treatment)+s(Age.Months, k=5, by=Sex)+Sex+Treatment + s(Total.monthly.Rainfall, k=3, by=Sex) +s(ConditionResiduals, k=4)+ s(Group.size, k=4) + s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = Gamma(link='log'), method="REML", data = cc.E)
+
+AIC(Egam1,Egam2,Egam3,Egam4) #just confirms that both interaction best
+summary(Egam4)
+
+#because the edf is perfectly 1 we removed the smooths for rainfall * sex and group size
+Egam4 <- mgcv::gam(E.pg.ml ~ s(Age.Months, k=5, by=Treatment)+s(Age.Months, k=5, by=Sex)+Sex+Treatment + Total.monthly.Rainfall*Sex +s(ConditionResiduals, k=4)+ Group.size + s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = Gamma(link='log'), method="REML", data = cc.E)
+
+library(mgcViz)
+prettycheck<-getViz(Egam4)
+check(prettycheck)
+k.check(Egam4,subsample=5000, n.rep=400)
+#gam.check(Egam1) #essentially covered by pretty check
+library('DHARMa')
+simulateResiduals(Egam4,plot = T)
+
+ DHARMa::testDispersion(Egam4)
+    DHARMa::testDispersion(Egam4, type="PearsonChisq", 
+         alternative="greater")
+
+summary(Egam4)
+
+
+#compare sexes at 12 months since no significant diff overall but looks like it in plots
+cc.E12<- cc.E[ which(cc.E$Age.Months==12), ]
+glmE12<-glmmTMB::glmmTMB(E.pg.ml ~ Sex +Treatment + Total.monthly.Rainfall*Sex + ConditionResiduals + Group.size + (1|KMP.ID), family = Gamma(link='log'), data = cc.E12)
+
+summary(glmE12)
+library(car)
+Anova(glmE12) #assessing significance, thus not significant
+
+library(ggplot2)
+library(dplyr)
+library(mgcv)
+library(tidymv)
+library(sjPlot)
+
+summary(Egam4)
+
+#T all yrs
+
+Tgam1 <- mgcv::gam(T.ng.ml ~ s(Age.Months, k=6, by=Sex)+Sex+Treatment + s(Total.monthly.Rainfall, k=3, by=Sex) +s(ConditionResiduals, k=4)+ s(Group.size, k=3)+s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = Gamma(link='log'), method="REML", data = cc.T)
+
+Tgam2 <- mgcv::gam(T.ng.ml ~ s(Age.Months, k=6, by=Treatment)+Sex+Treatment + s(Total.monthly.Rainfall, k=3, by=Sex) +s(ConditionResiduals,k=4)+ s(Group.size, k=3)+ s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = Gamma(link='log'), method="REML", data = cc.T)
+
+Tgam3 <- mgcv::gam(T.ng.ml ~ s(Age.Months, k=6)+Sex+Treatment + s(Total.monthly.Rainfall, k=3, by=Sex) +s(ConditionResiduals, k=4)+ s(Group.size, k=3)+ s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = Gamma(link='log'), method="REML", data = cc.T)
+
+Tgam4 <- mgcv::gam(T.ng.ml ~ s(Age.Months, k=6, by=Sex)+s(Age.Months, k=6, by=Treatment)+Sex+Treatment + s(Total.monthly.Rainfall, k=3, by=Sex) +s(ConditionResiduals, k=4)+ s(Group.size, k=3)+ s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = Gamma(link='log'), method="REML", data = cc.T)
+
+AIC(Tgam1,Tgam2,Tgam3,Tgam4, Tgam5) #just confirms that sex and treatment interaction seems best
+
+#removed group size since trend wasnt notably improving deviance or significant
+Tgam5 <- mgcv::gam(T.ng.ml ~ s(Age.Months, k=6, by=Sex)+s(Age.Months, k=6, by=Treatment)+Sex+Treatment + s(Total.monthly.Rainfall, k=3, by=Sex) +s(ConditionResiduals, k=4)+ s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = Gamma(link='log'), method="REML", data = cc.T)
+
+
+summary(Tgam5)
+
+
+library(mgcViz)
+prettycheck<-getViz(Tgam5)
+check(prettycheck)
+k.check(Tgam5,subsample=5000, n.rep=400)
+#gam.check(Egam1) #essentially covered by pretty check
+library('DHARMa')
+simulateResiduals(Tgam5,plot = T)
+
+ DHARMa::testDispersion(Tgam5)
+    DHARMa::testDispersion(Tgam5, type="PearsonChisq", 
+         alternative="greater")
+
+summary(Tgam5)
+
+#compare sexes at 12 months since no significant diff overall but looks like it in plots
+cc.T12<- cc.T[ which(cc.T$Age.Months==12), ]
+glmT12<-glmmTMB::glmmTMB(T.ng.ml ~ Sex + Treatment + Total.monthly.Rainfall*Sex + ConditionResiduals, family = Gamma(link='log'), data = cc.T12)
+
+summary(glmT12)
+
+#IGF all yrs (Cap.Bleed removed for ns and not adding to explanation of variation)
+
+IGF1gam1 <- mgcv::gam(IGF.1.ng.ml ~ s(Age.Months, k=5, by=Sex)+Sex+Treatment + s(Total.monthly.Rainfall, k=3, by=Sex)+s(ConditionResiduals, k=3)+ s(Group.size,k=3)+s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = Gamma(link='log'), method="REML", data = cc.IGF1)
+
+IGF1gam2 <- mgcv::gam(IGF.1.ng.ml ~ s(Age.Months, k=5, by=Treatment)+Sex+Treatment + s(Total.monthly.Rainfall, k=3, by=Sex) +s(ConditionResiduals,k=3)+ s(Group.size, k=3)+ s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = Gamma(link='log'), method="REML", data = cc.IGF1)
+
+IGF1gam3 <- mgcv::gam(IGF.1.ng.ml ~ s(Age.Months, k=5)+Sex+Treatment + s(Total.monthly.Rainfall, k=3, by=Sex) +s(ConditionResiduals, k=3)+ s(Group.size, k=3)+ s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = Gamma(link='log'), method="REML", data = cc.IGF1)
+
+IGF1gam4 <- mgcv::gam(IGF.1.ng.ml ~ s(Age.Months, k=5, by=Treatment)+s(Age.Months, k=5, by=Sex)+Sex+Treatment + s(Total.monthly.Rainfall, k=3, by=Sex) +s(ConditionResiduals,k=3)+ s(Group.size, k=3)+ s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = Gamma(link='log'), method="REML", data = cc.IGF1)
+
+AIC(IGF1gam1,IGF1gam2,IGF1gam3,IGF1gam4) #just confirms that treatment interaction seems best
+summary(IGF1gam2)
+
+
+#linear for edf ===1.000, rainfall becomes 1.000 as terms removed
+IGF1gam2 <- mgcv::gam(IGF.1.ng.ml ~ s(Age.Months, k=5, by=Treatment)+Sex+Treatment + Total.monthly.Rainfall*Sex +ConditionResiduals+Group.size+s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = Gamma(link='log'), method="REML", data = cc.IGF1)
+
+summary(IGF1gam2)
+
+library(mgcViz)
+prettycheck<-getViz(IGF1gam2)
+check(prettycheck)
+k.check(IGF1gam2,subsample=5000, n.rep=400)
+#gam.check(IGF1gamall1) #essentially covered by pretty check
+library('DHARMa')
+simulateResiduals(IGF1gam2,plot = T)
+
+ DHARMa::testDispersion(IGF1gam2)
+    DHARMa::testDispersion(IGF1gam2, type="PearsonChisq", 
+         alternative="greater")
+  
+
+#compare sexes at 12 months since no significant diff overall but looks like it in plots
+cc.IGF12<- cc.IGF1[ which(cc.IGF1$Age.Months==12), ]
+glmIGF12<-glmmTMB::glmmTMB(IGF.1.ng.ml ~ Sex+Treatment + Total.monthly.Rainfall*Sex + ConditionResiduals + Group.size + (1|KMP.ID), family = Gamma(link='log'), data = cc.IGF12, na.action = na.exclude)
+
+summary(glmIGF12)
+
+#group size ns and no explanation of data
+#hindfoot and rainfall were linear, there was no interaction with sex here
+cc.weight<-pup.a4[complete.cases(pup.a4$Average.Weight.5.days),]
+
+weightgam1 <- mgcv::gam(Average.Weight.5.days ~ s(Age.Months, k=6, by=Sex)+Sex+Treatment+Total.monthly.Rainfall+HINDFOOT.avrg+s(Group.size, k=3)+s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = gaussian, data = cc.weight)
+
+weightgam2 <- mgcv::gam(Average.Weight.5.days ~ s(Age.Months, k=6, by=Treatment)+Sex+Treatment + Total.monthly.Rainfall+HINDFOOT.avrg+s(Group.size, k=3)+s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = gaussian, data = cc.weight)
+
+weightgam3 <- mgcv::gam(Average.Weight.5.days ~ s(Age.Months, k=6)+Sex+Treatment + Total.monthly.Rainfall+HINDFOOT.avrg+s(Group.size, k=3)+s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = gaussian, data = cc.weight)
+
+weightgam4 <- mgcv::gam(Average.Weight.5.days ~ s(Age.Months, k=6, by=Treatment)+s(Age.Months, k=5, by=Sex)+Sex+Treatment +Total.monthly.Rainfall+HINDFOOT.avrg+s(Group.size, k=3)+s(KMP.ID, bs = "re")+s(Litter, bs = "re"), family = gaussian, data = cc.weight)
+
+AIC(weightgam1,weightgam2,weightgam3,weightgam4) #just confirms that treatment interaction seems best
+
+summary(weightgam2)
+
+library(mgcViz)
+prettycheck<-getViz(weightgam2)
+check(prettycheck)
+k.check(weightgam2,subsample=5000, n.rep=400)
+#gam.check(IGF1gamall1) #essentially covered by pretty check
+library('DHARMa')
+simulateResiduals(weightgam2,plot = T)
+
+ DHARMa::testDispersion(weightgam2)
+    DHARMa::testDispersion(weightgam2, type="PearsonChisq", 
+         alternative="greater")
+
+#compare sexes at 12 months 
+cc.weight12<- cc.weight[ which(cc.weight$Age.Months==12), ]
+glmweight12<-glmmTMB::glmmTMB(Average.Weight.5.days ~ Sex+Treatment + Total.monthly.Rainfall+ HINDFOOT.avrg + Group.size, family = gaussian, data = cc.weight12)
+
+summary(glmweight12)
+library(car)
+Anova(glmweight12) #assessing significance, thus not significant
+
+```
+
+
+Plots Age Sex TRT
+
+```{r}
+##
+##
+##
+##A4
+######
+summary(A4gam5)
+preda4try <-data.frame(cc.a4, predict(A4gam5,type="response", se.fit = T))
+try.my_dataa4 <- data.frame(preda4try,mu=preda4try$fit, low =(pmax(0,preda4try$fit - 1.96 * preda4try$se.fit)), high = (preda4try$fit + 1.96 * preda4try$se.fit))
+#remove one point @30 for better visualization
+cc.a4please<- cc.a4[ which(cc.a4$A4.ng.ml<20), ]
+
+library(ggplot2)
+library(sjPlot)
+
+cplota4try<-ggplot()+
+# geom_point(data= cc.a4please, aes(x= Age.Months, y=A4.ng.ml, shape=Sex, color=Sex), size = 3, position=position_jitter(height=0.001, width=0.4), alpha = 0.5)+
+  geom_smooth(data=try.my_dataa4,aes(ymin = low, ymax = high, x=Age.Months, y = mu, group=Sex, fill=Sex,linetype=Sex,col=Sex), method="gam", formula=y ~ s(x,k=5, bs = "cs"))+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.35,0.8),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name="Offspring age (months)", breaks=c(1,3,6,9,12))+scale_y_continuous(name=expression("A"["4"]*" (ng/ml)"))+scale_fill_manual(values = c("blue", "red")) +
+      scale_color_manual(values = c("blue", "red")) +
+  scale_linetype_manual(values = c("solid","dashed"))
+#values = c("#3a004d", "#278f98", "#ffca47")
+#c(0.35,0.8) without data
+ggsave(file="20a4_sexcs.png",cplota4try,width=5.5,height=5,dpi=300)
+
+cplota4tryraw<-ggplot()+
+  geom_smooth(data=try.my_dataa4,aes(ymin = low, ymax = high, x=Age.Months, y = mu, group=Sex, fill=Sex,linetype=Sex,col=Sex), method="gam", formula=y ~ s(x,k=5, bs = "cs"))+
+   geom_point(data= cc.a4please, aes(x= Age.Months, y=A4.ng.ml, shape=Sex, color=Sex), size = 3, position=position_jitter(height=0.001, width=0.4), alpha = 0.5)+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.25,0.8),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name="Offspring age (months)", breaks=c(1,3,6,9,12),limits=c(0.5,12.5))+scale_y_continuous(name=expression("A"["4"]*" (ng/ml)"))+scale_fill_manual(values = c("blue", "red")) +
+      scale_color_manual(values = c("blue", "red")) +
+  scale_linetype_manual(values = c("solid","dashed"))
+#values = c("#3a004d", "#278f98", "#ffca47")
+#c(0.35,0.8) without data
+ggsave(file="20a4raw_sexcs.png",cplota4tryraw,width=6.5,height=6,dpi=300)
+
+library(ggsignif)
+cplota4trytrt<-ggplot(try.my_dataa4, aes(x=Treatment, y=mu,  color=Treatment))+
+  coord_cartesian(ylim = c(0, 2.2),xlim = c(0.6, 3.5),expand = FALSE)+
+  stat_summary(fun.data=mean_se, geom="pointrange",size=1, aes(color=Treatment, group=Treatment)) +
+  stat_summary(fun.y=mean, geom="point",size=1, aes(color=Treatment,group=Treatment)) +
+  scale_color_manual(values=c("#3a004d","#278f98","#ffca47"))+
+  geom_signif(
+    y_position = c(1.6, 1.9), xmin = c(1, 1), xmax = c(2, 3),
+    annotation = c("N.S.", "N.S."), tip_length = 0, color="black", textsize = 8
+  ) +
+# geom_point(data=cc.a4please, aes(x=Treatment, y=A4.ng.ml,color= Treatment, shape=Treatment),size=0.9,alpha=0.4, position=position_jitter(height=0.001, width=0.2)) +
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = 'none',legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_discrete(name="Maternal treatment", labels = c(
+      "C" = "DC",
+      "S" = "SC",
+      "F" = "DT"))+scale_y_continuous(name=expression("A"["4"]*" (ng/ml)"))
+
+ggsave(file="21a4_trtcs.png",cplota4trytrt,width=5.5,height=5,dpi=300)
+
+
+cplota4trytrtraw<-ggplot(cc.a4please, aes(x=Treatment, y=A4.ng.ml,  color=Treatment))+
+  scale_color_manual(values=c("#3a004d","#278f98","#ffca47"))+
+  geom_boxplot(color="black",alpha=0.4, outlier.shape = NA) +
+ geom_point(aes(color= Treatment, shape=Treatment),size=3, alpha=0.45, position=position_jitter(height=0.001, width=0.2)) +
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = 'none',legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_discrete(name="Maternal treatment", labels = c(
+      "C" = "DC",
+      "S" = "SC",
+      "F" = "DT"))+scale_y_continuous(name=expression("A"["4"]*" (ng/ml)"))
+ggsave(file="21a4raw_trtcs.png",cplota4trytrtraw,width=6.5,height=6,dpi=300)
+
+
+##
+##
+##
+##T
+######
+predttry <-data.frame(cc.T, predict(Tgam5,type="response", se.fit = T))
+#####To replicate the m vs f age plot
+#library(dplyr)
+try.my_data.t <- predttry %>% mutate (mu=predttry$fit, low =(pmax(0,predttry$fit - 1.96 * predttry$se.fit)), high = (predttry$fit + 1.96 * predttry$se.fit))
+
+cplottsex <-ggplot(try.my_data.t, aes(x=Sex, y=mu,  color=Sex))+
+  coord_cartesian(ylim = c(0, 9),xlim = c(0.6, 2.5),expand = FALSE)+ 
+  stat_summary(fun.data=mean_se, geom="pointrange",size=1, aes(color=Sex, group=Sex)) + stat_summary(fun.y=mean, geom="point",size=1, aes(color=Sex,group=Sex)) + scale_color_manual(values=c("blue", "red"))+
+  geom_signif(
+    y_position = c(3.8), xmin = c(1), xmax = c(2),
+    annotation = c("***"), tip_length = 0
+  , color="black", textsize=12) +
+# geom_point(data=cc.T, aes(x=Sex, y=T.ng.ml,color= Sex, shape=Sex),size=0.9,alpha=0.4, position=position_jitter(height=0.001, width=0.2)) +
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = 'none',legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_y_continuous(name=expression("T (ng/ml)"),breaks=c(0,2,4,6,8))
+
+ggsave(file="25t_sexcs.png",cplottsex,width=5.5,height=5,dpi=300)
+
+
+cplottsexraw<-ggplot(cc.T, aes(x=Sex, y=T.ng.ml,  color=Sex))+
+  scale_color_manual(values=c("blue", "red"))+
+  geom_boxplot(color="black",alpha=0.4, outlier.shape = NA) +
+ geom_point(aes(color= Sex, shape=Sex),size=3, alpha=0.45, position=position_jitter(height=0.001, width=0.2)) +
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = 'none',legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_y_continuous(name=expression("T (ng/ml)"))
+ggsave(file="25traw_sexcs.png",cplottsexraw,width=6.5,height=6,dpi=300)
+
+cplotttrt<-ggplot()+coord_cartesian(ylim = c(0, 9),expand = FALSE)+
+  geom_smooth(data=try.my_data.t,aes(ymin = low, ymax = high, x=Age.Months, y = mu, group=Treatment, fill=Treatment,linetype=Treatment,col=Treatment), method="gam", formula=y ~ s(x,k=4, bs = "cs"))+
+ # geom_point(data= cc.T, aes(x= Age.Months, y=T.ng.ml, shape=Treatment, color=Treatment), size = 3, position=position_jitter(height=0.001, width=0.4), alpha = 0.5)+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.35,0.8),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name="Offspring age (months)", breaks=c(1,3,6,9,12),limits=c(0.5,12.5))+scale_y_continuous(name=expression("T (ng/ml)"),breaks=c(0,2,4,6,8))+scale_fill_manual(values = c("#3a004d","#278f98","#ffca47"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +
+      scale_color_manual(values = c("#3a004d","#278f98","#ffca47"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +
+  scale_linetype_manual(values = c("solid","dashed","dotted"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +scale_shape_discrete(name="Maternal treatment",labels=c('DC', 'SC', 'DT'))
+#c(0.20,0.8) without data
+#ggsave(file="23e2_trtcs.png",cplote2trt,width=5.5,height=5,dpi=300)
+ggsave(file="24t_trtcs.png",cplotttrt,width=5.5,height=5,dpi=300)
+
+cplotttrtraw<-ggplot()+
+  geom_smooth(data=try.my_data.t,aes(ymin = low, ymax = high, x=Age.Months, y = mu, group=Treatment, fill=Treatment,linetype=Treatment,col=Treatment), method="gam", formula=y ~ s(x,k=4, bs = "cs"))+
+  geom_point(data= cc.T, aes(x= Age.Months, y=T.ng.ml, shape=Treatment, color=Treatment), size = 3, position=position_jitter(height=0.001, width=0.4), alpha = 0.5)+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.35,0.75),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name="Offspring age (months)", breaks=c(1,3,6,9,12),limits=c(0.5,12.5))+scale_y_continuous(name=expression("T (ng/ml)"))+scale_fill_manual(values = c("#3a004d","#278f98","#ffca47"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +
+      scale_color_manual(values = c("#3a004d","#278f98","#ffca47"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +
+  scale_linetype_manual(values = c("solid","dashed","dotted"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +scale_shape_discrete(name="Maternal treatment",labels=c('DC', 'SC', 'DT'))
+#c(0.20,0.8) without data
+#ggsave(file="23e2_trtcs.png",cplote2trt,width=5.5,height=5,dpi=300)
+ggsave(file="24traw_trtcs.png",cplotttrtraw,width=6.5,height=6,dpi=300)
+
+
+##
+##
+##
+##E
+######
+
+prede2try <-data.frame(cc.E, predict(Egam4,type="response", se.fit = T))
+#####To replicate the m vs f age plot
+#library(dplyr)
+try.my_data.e2 <- prede2try %>% mutate (mu=prede2try$fit, low =(prede2try$fit - 1.96 * prede2try$se.fit), high = (prede2try$fit + 1.96 * prede2try$se.fit))
+
+cplote2sex<-ggplot()+
+  coord_cartesian(ylim = c(50, 490),expand = FALSE)+
+  geom_smooth(data=try.my_data.e2,aes(ymin = low, ymax = high, x=Age.Months, y = mu, group=Sex, fill=Sex,linetype=Sex,col=Sex), method="gam", formula=y ~ s(x,k=4, bs = "cs"))+
+   #geom_point(data= cc.E, aes(x= Age.Months, y=E.pg.ml, shape=Sex, color=Sex), size = 3, position=position_jitter(height=0.001, width=0.4), alpha = 0.5)+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.15,0.8),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name="Offspring age (months)", breaks=c(1,3,6,9,12), limits=c(0.5,12.5))+scale_y_continuous(name=expression("E"["2"]*" (pg/ml)"),breaks=c(50,100,200,300,400))+scale_fill_manual(values = c("blue", "red")) +
+      scale_color_manual(values = c("blue", "red")) +
+  scale_linetype_manual(values = c("solid","dashed"))
+ggsave(file="22e2_sexcs.png",cplote2sex,width=5.5,height=5,dpi=300)
+
+cplote2sexraw<-ggplot()+
+  geom_smooth(data=try.my_data.e2,aes(ymin = low, ymax = high, x=Age.Months, y = mu, group=Sex, fill=Sex,linetype=Sex,col=Sex), method="gam", formula=y ~ s(x,k=4, bs = "cs"))+
+   geom_point(data= cc.E, aes(x= Age.Months, y=E.pg.ml, shape=Sex, color=Sex), size = 3, position=position_jitter(height=0.001, width=0.4), alpha = 0.5)+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.25,0.8),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name="Offspring age (months)", breaks=c(1,3,6,9,12), limits=c(0.5,12.5))+scale_y_continuous(name=expression("E"["2"]*" (pg/ml)"))+scale_fill_manual(values = c("blue", "red")) +
+      scale_color_manual(values = c("blue", "red")) +
+  scale_linetype_manual(values = c("solid","dashed"))
+ggsave(file="22e2raw_sexcs.png",cplote2sexraw,width=6.5,height=6,dpi=300)
+
+
+cplote2trt<-ggplot()+
+  coord_cartesian(ylim = c(50, 490),expand = FALSE)+
+  geom_smooth(data=try.my_data.e2,aes(ymin = low, ymax = high, x=Age.Months, y = mu, group=Treatment, fill=Treatment,linetype=Treatment,col=Treatment), method="gam", formula=y ~ s(x,k=4, bs = "cs"))+
+  #geom_point(data= cc.E, aes(x= Age.Months, y=E.pg.ml, shape=Treatment, color=Treatment), size = 3, position=position_jitter(height=0.001, width=0.4), alpha = 0.5)+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.35,0.8),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name="Offspring age (months)", breaks=c(1,3,6,9,12),limits=c(0.5,12.5))+scale_y_continuous(name=expression("E"["2"]*" (pg/ml)"),breaks=c(50,100,200,300,400))+scale_fill_manual(values = c("#3a004d","#278f98","#ffca47"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +
+      scale_color_manual(values = c("#3a004d","#278f98","#ffca47"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +
+  scale_linetype_manual(values = c("solid","dashed","dotted"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +scale_shape_discrete(name="Maternal treatment",labels=c('DC', 'SC', 'DT'))
+#c(0.20,0.8) without data
+#ggsave(file="23e2_trtcs.png",cplote2trt,width=5.5,height=5,dpi=300)
+ggsave(file="23e2_trtcs.png",cplote2trt,width=5.5,height=5,dpi=300)
+
+
+cplote2trtraw<-ggplot()+
+  geom_smooth(data=try.my_data.e2,aes(ymin = low, ymax = high, x=Age.Months, y = mu, group=Treatment, fill=Treatment,linetype=Treatment,col=Treatment), method="gam", formula=y ~ s(x,k=4, bs = "cs"))+
+  geom_point(data= cc.E, aes(x= Age.Months, y=E.pg.ml, shape=Treatment, color=Treatment), size = 3, position=position_jitter(height=0.001, width=0.4), alpha = 0.5)+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.45,0.75),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name="Offspring age (months)", breaks=c(1,3,6,9,12),limits=c(0.5,12.5))+scale_y_continuous(name=expression("E"["2"]*" (pg/ml)"))+scale_fill_manual(values = c("#3a004d","#278f98","#ffca47"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +
+      scale_color_manual(values = c("#3a004d","#278f98","#ffca47"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +
+  scale_linetype_manual(values = c("solid","dashed","dotted"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +scale_shape_discrete(name="Maternal treatment",labels=c('DC', 'SC', 'DT'))
+ggsave(file="23e2raw_trtcs.png",cplote2trtraw,width=6.5,height=6,dpi=300)
+
+##
+##
+##
+##IGF
+######
+predIGF1try <-data.frame(cc.IGF1, predict(IGF1gam2,type="response", se.fit = T))
+
+#library(dplyr)
+try.my_data.IGF1 <- predIGF1try %>% mutate (mu=predIGF1try$fit, low =(predIGF1try$fit - 1.96 * predIGF1try$se.fit), high = (predIGF1try$fit + 1.96 * predIGF1try$se.fit))
+
+#####To replicate the m vs f age plot
+
+cplotIGFsex <-ggplot(try.my_data.IGF1, aes(x=Sex, y=mu,  color=Sex))+
+  coord_cartesian(ylim = c(45, 360),xlim = c(0.6, 2.5),expand = FALSE)+ stat_summary(fun.data=mean_se, geom="pointrange",size=1, aes(color=Sex, group=Sex)) + stat_summary(fun.y=mean, geom="point",size=1, aes(color=Sex,group=Sex)) + scale_color_manual(values=c("blue", "red"))+
+  geom_signif(
+    y_position = c(125),xmin = c(1), xmax = c(2),
+    annotation = c("*"), tip_length = 0
+  , color="black", textsize=12) +
+# geom_point(data=cc.IGF1, aes(x=Sex, y=IGF.1.ng.ml,color= Sex, shape=Sex),size=0.9,alpha=0.4, position=position_jitter(height=0.001, width=0.4)) + #"pointrange",size=0.5, "point",size=0.5
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = 'none',legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +
+  scale_y_continuous(name=expression("IGF-1 (ng/ml)"),breaks=c(45,100,200,300)) 
+
+ggsave(file="26igf_sexcs.png",cplotIGFsex,width=5.5,height=5,dpi=300)
+
+
+cplotIGFsexraw<-ggplot(cc.IGF1, aes(x=Sex, y=IGF.1.ng.ml,  color=Sex))+
+  scale_color_manual(values=c("blue", "red"))+
+  geom_boxplot(color="black",alpha=0.4, outlier.shape = NA) +
+ geom_point(aes(color= Sex, shape=Sex),size=3, alpha=0.45, position=position_jitter(height=0.001, width=0.2)) +
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = 'none',legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_y_continuous(name=expression("IGF-1 (ng/ml)"))
+ggsave(file="26igfraw_sexcs.png",cplotIGFsexraw,width=6.5,height=6,dpi=300)
+
+
+cplotIGFtrt<-ggplot()+
+  coord_cartesian(ylim = c(45, 360),expand = FALSE)+
+  geom_smooth(data=try.my_data.IGF1,aes(ymin = low, ymax = high, x=Age.Months, y = mu, group=Treatment, fill=Treatment,linetype=Treatment,col=Treatment), method="gam", formula=y ~ s(x,k=4, bs = "cs"))+
+ # geom_point(data= cc.IGF1, aes(x= Age.Months, y=IGF.1.ng.ml, shape=Treatment, color=Treatment), size = 3, position=position_jitter(height=0.001, width=0.4), alpha = 0.5)+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.55,0.75),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name="Offspring age (months)", breaks=c(1,3,6,9,12),limits=c(0.5,12.5))+scale_y_continuous(name=expression("IGF-1 (ng/ml)"),breaks=c(45,100,200,300))+scale_fill_manual(values = c("#3a004d","#278f98","#ffca47"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +
+      scale_color_manual(values = c("#3a004d","#278f98","#ffca47"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +
+  scale_linetype_manual(values = c("solid","dashed","dotted"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +scale_shape_discrete(name="Maternal treatment",labels=c('DC', 'SC', 'DT'))
+ggsave(file="27igf_trtcs.png",cplotIGFtrt,width=5.5,height=5,dpi=300)
+
+cplotIGFtrtraw<-ggplot()+
+  geom_smooth(data=try.my_data.IGF1,aes(ymin = low, ymax = high, x=Age.Months, y = mu, group=Treatment, fill=Treatment,linetype=Treatment,col=Treatment), method="gam", formula=y ~ s(x,k=4, bs = "cs"))+
+ geom_point(data= cc.IGF1, aes(x= Age.Months, y=IGF.1.ng.ml, shape=Treatment, color=Treatment), size = 3, position=position_jitter(height=0.001, width=0.4), alpha = 0.5)+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.74,0.77),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name="Offspring age (months)", breaks=c(1,3,6,9,12),limits=c(0.5,12.5))+scale_y_continuous(name=expression("IGF-1 (ng/ml)"))+scale_fill_manual(values = c("#3a004d","#278f98","#ffca47"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +
+      scale_color_manual(values = c("#3a004d","#278f98","#ffca47"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +
+  scale_linetype_manual(values = c("solid","dashed","dotted"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +scale_shape_discrete(name="Maternal treatment",labels=c('DC', 'SC', 'DT'))
+#c(0.45,0.8) without data
+#c(0.77,0.76) with data
+ggsave(file="27igfraw_trtcs.png",cplotIGFtrtraw,width=6.5,height=6,dpi=300)
+
+
+##
+##
+##
+##WEIGHT
+######
+
+predweighttry <-data.frame(cc.weight, predict(weightgam2,type="response", se.fit = T))
+
+#####To replicate the m vs f age plot
+#library(dplyr)
+try.my_data.weight<- predweighttry %>% mutate (mu=predweighttry$fit, low =(predweighttry$fit - 1.96 * predweighttry$se.fit), high = (predweighttry$fit + 1.96 * predweighttry$se.fit))
+
+
+cplotweightsex <-ggplot(try.my_data.weight, aes(x=Sex, y=mu,  color=Sex))+
+  coord_cartesian(ylim = c(50, 590),xlim = c(0.6, 2.5),expand = FALSE)+
+  stat_summary(fun.data=mean_se, geom="pointrange",size=1, aes(color=Sex, group=Sex)) + stat_summary(fun=mean, geom="point",size=1, aes(color=Sex,group=Sex)) + scale_color_manual(values=c("blue", "red"))+
+  geom_signif(
+    y_position = c(380),xmin = c(1), xmax = c(2),
+    annotation = c("N.S."), tip_length = 0
+  , color="black", textsize=8) +
+# geom_point(data=cc.weight, aes(x=Sex, y=Average.Weight.5.days,color= Sex, shape=Sex),size=0.9,alpha=0.4, position=position_jitter(height=0.001, width=0.2)) +
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = 'none',legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +
+  scale_y_continuous(name=expression("Weight, 5-day average (g)"),breaks=c(50,100,200,300,400,500))
+
+ggsave(file="28weight_sexcs.png",cplotweightsex,width=5.5,height=5,dpi=300)
+
+
+
+cplotweightsexraw<-ggplot(cc.weight, aes(x=Sex, y=Average.Weight.5.days,  color=Sex))+
+  scale_color_manual(values=c("blue", "red"))+
+  geom_boxplot(color="black",alpha=0.4, outlier.shape = NA) +
+ geom_point(aes(color= Sex, shape=Sex),size=3, alpha=0.45, position=position_jitter(height=0.001, width=0.2)) +
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = 'none',legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_y_continuous(name=expression("Weight, 5-day average (g)"))
+ggsave(file="28weightraw_sexcs.png",cplotweightsexraw,width=6.5,height=6,dpi=300)
+
+
+
+cplotweighttrt<-ggplot()+ 
+  coord_cartesian(ylim = c(50, 590),expand = FALSE)+
+  geom_smooth(data=try.my_data.weight,aes(ymin = low, ymax = high, x=Age.Months, y = mu, group=Treatment, fill=Treatment,linetype=Treatment,col=Treatment), method="gam", formula=y ~ s(x,k=4, bs = "cs"))+
+ # geom_point(data= cc.weight, aes(x= Age.Months, y=Average.Weight.5.days, shape=Treatment, color=Treatment), size = 3, position=position_jitter(height=0.001, width=0.5), alpha = 0.5)+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.65,0.25),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name="Offspring age (months)", breaks=c(1,3,6,9,12),limits=c(0.5,12.5))+scale_y_continuous(name=expression("Weight, 5-day average (g)"),breaks=c(50,100,200,300,400,500))+scale_fill_manual(values = c("#3a004d","#278f98","#ffca47"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +
+      scale_color_manual(values = c("#3a004d","#278f98","#ffca47"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +
+  scale_linetype_manual(values = c("solid","dashed","dotted"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +scale_shape_discrete(name="Maternal treatment",labels=c('DC', 'SC', 'DT'))
+#c(0.85,0.25) without data
+#c(0.85,0.2) with data
+ggsave(file="29weight_trtcs.png",cplotweighttrt,width=5.5,height=5,dpi=300)
+
+
+cplotweighttrtraw<-ggplot()+
+  geom_smooth(data=try.my_data.weight,aes(ymin = low, ymax = high, x=Age.Months, y = mu, group=Treatment, fill=Treatment,linetype=Treatment,col=Treatment), method="gam", formula=y ~ s(x,k=4, bs = "cs"))+
+ geom_point(data= cc.weight, aes(x= Age.Months, y=Average.Weight.5.days, shape=Treatment, color=Treatment), size = 3, position=position_jitter(height=0.001, width=0.5), alpha = 0.5)+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.72,0.2),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name="Offspring age (months)", breaks=c(1,3,6,9,12),limits=c(0.5,12.5))+scale_y_continuous(name=expression("Weight, 5-day average (g)"))+scale_fill_manual(values = c("#3a004d","#278f98","#ffca47"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +
+      scale_color_manual(values = c("#3a004d","#278f98","#ffca47"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +
+  scale_linetype_manual(values = c("solid","dashed","dotted"),name="Maternal treatment",labels=c('DC', 'SC', 'DT')) +scale_shape_discrete(name="Maternal treatment",labels=c('DC', 'SC', 'DT'))
+#c(0.85,0.25) without data
+#c(0.85,0.2) with data
+ggsave(file="29weightraw_trtcs.png",cplotweighttrtraw,width=6.5,height=6,dpi=300)
+
+
+
+```
+
+plot assembly for age sex trt
+```{r}
+library(patchwork)
+
+figure1<-cplota4try+cplottsex+cplote2sex+cplotIGFsex+ cplota4trytrt+cplotttrt+cplote2trt+cplotIGFtrt+ plot_layout(ncol = 4)+plot_annotation(tag_levels = list(c('a', 'c','e', 'g','b', 'd','f', 'h'))) &
+    theme(text = element_text(size=25,family="Arial",lineheight=unit(2,"line")))
+
+ggsave(file="1_figure1.jpeg",figure1,width=26,height=12,dpi=300)
+
+ figure3<- IGF1conditionplotraw+cplotweightsex+cplotweighttrt+plot_annotation(tag_levels = "a") &
+    theme(text = element_text(size=25,family="Arial",lineheight=unit(2,"line")))
+ggsave(file="1_figure3.jpeg",figure3,width=18.5,height=6,dpi=300)
+```
+
+plots rainfall and condition
+```{r}
+##
+##
+##
+##A4
+######
+
+library(ggplot2)
+
+#to replicate the condition plot
+
+a4conditionplotraw<-ggplot()+
+  geom_point(data= cc.a4please, aes(x= ConditionResiduals, y=A4.ng.ml, shape=Sex, col=Sex), size = 3, position=position_jitter(height=0.001, width=0.2), alpha = 0.5)+
+  geom_smooth(data=try.my_dataa4,aes(ymin = low, ymax = high, x=ConditionResiduals, y = mu,), col='black',method="gam", formula=y ~ s(x,k=5, bs = "cs"))+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.85,0.8),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name=expression("Body condition residuals"))+scale_y_continuous(name=expression("A"["4"]*" (ng/ml)")) +
+  scale_fill_manual(values = c("blue", "red")) +
+      scale_color_manual(values = c("blue", "red"))
+#ggsave(file="3a4rawconditionplot.png",a4conditionplotraw,width=5.5,height=5)
+
+a4conditionplotraw<-ggplot()+
+  geom_point(data= cc.a4please, aes(x= ConditionResiduals, y=A4.ng.ml, shape=Sex, col=Sex), size = 3, position=position_jitter(height=0.001, width=0.2), alpha = 0.5)+
+  geom_smooth(data=try.my_dataa4,aes(ymin = low, ymax = high, x=ConditionResiduals, y = mu,), col='black',method="gam", formula=y ~ s(x,k=5, bs = "cs"))+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.85,0.8),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name=expression("Body condition residuals"))+scale_y_continuous(name=expression("A"["4"]*" (ng/ml)")) +
+  scale_fill_manual(values = c("blue", "red")) +
+      scale_color_manual(values = c("blue", "red"))
+#ggsave(file="3a4rawconditionplot.png",a4conditionplotraw,width=5.5,height=5)
+
+
+##
+##
+##
+##T
+######
+
+#to replicate the m vs f rainfall plot
+
+trainplot<-ggplot()+ 
+   coord_cartesian(ylim = c(0, 4.3), xlim=c(0,109),expand = FALSE)+
+# geom_point(data= cc.T, aes(x= Total.monthly.Rainfall, y=T.ng.ml, shape=Sex, col=Sex), size = 3, position=position_jitter(height=0.001, width=0.2), alpha = 0.5)+
+  geom_smooth(data=try.my_data.t,aes(ymin = low, ymax = high, x=Total.monthly.Rainfall, y = mu, group=Sex, col=Sex, fill=Sex, linetype=Sex), method="gam", formula=y ~ s(x,k=5, bs = "cs"))+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.55,0.43),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name="Total Monthly Rainfall (mm)")+scale_y_continuous(name=expression("T (ng/ml)"))+scale_fill_manual(values = c("blue", "red")) +
+      scale_color_manual(values = c("blue", "red")) +
+  scale_linetype_manual(values = c("solid","dashed")) 
+
+#ggsave(file="8T_rainplot.png",trainplot,width=5.5,height=5)
+
+
+trainplotraw<-ggplot()+
+ geom_point(data= cc.T, aes(x= Total.monthly.Rainfall, y=T.ng.ml, shape=Sex, col=Sex), size = 3, position=position_jitter(height=0.001, width=0.2), alpha = 0.5)+
+  geom_smooth(data=try.my_data.t,aes(ymin = low, ymax = high, x=Total.monthly.Rainfall, y = mu, group=Sex, col=Sex, fill=Sex, linetype=Sex), method="gam", formula=y ~ s(x,k=5, bs = "cs"))+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.55,0.8),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name="Total Monthly Rainfall (mm)")+scale_y_continuous(name=expression("T (ng/ml)"))+scale_fill_manual(values = c("blue", "red")) +
+      scale_color_manual(values = c("blue", "red")) +
+  scale_linetype_manual(values = c("solid","dashed")) 
+
+#ggsave(file="8Traw_rainplot.png",trainplotraw,width=5.5,height=5)
+
+#to replicate the condition plot
+
+tconditionplot<-ggplot()+
+  #geom_point(data= cc.T, aes(x= ConditionResiduals, y=T.ng.ml, shape=Sex, col=Sex), size = 3, position=position_jitter(height=0.001, width=0.2), alpha = 0.5)+
+  geom_smooth(data=try.my_data.t,aes(ymin = low, ymax = high, x=ConditionResiduals, y = mu), col='black', method="gam", formula=y ~ s(x,k=5, bs = "cs"))+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.85,0.8),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name=expression("Body condition residuals"))+scale_y_continuous(name=expression("T (ng/ml)")) +
+  scale_fill_manual(values = c("blue", "red")) +
+      scale_color_manual(values = c("blue", "red"))
+
+#ggsave(file="9T_conditionplot.png",tconditionplot,width=5.5,height=5)
+
+tconditionplotraw<-ggplot()+
+  geom_point(data= cc.T, aes(x= ConditionResiduals, y=T.ng.ml, shape=Sex, col=Sex), size = 3, position=position_jitter(height=0.001, width=0.2), alpha = 0.5)+
+  geom_smooth(data=try.my_data.t,aes(ymin = low, ymax = high, x=ConditionResiduals, y = mu), col='black', method="gam", formula=y ~ s(x,k=5, bs = "cs"))+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.2,0.8),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name=expression("Body condition residuals"))+scale_y_continuous(name=expression("T (ng/ml)")) +
+  scale_fill_manual(values = c("blue", "red")) +
+      scale_color_manual(values = c("blue", "red"))
+
+#ggsave(file="9Traw_conditionplot.png",tconditionplotraw,width=5.5,height=5)
+
+##
+##
+##
+##E
+######
+
+#to replicate the m vs f rainfall plot
+
+erainplot<-ggplot()+
+  coord_cartesian(ylim = c(0, 320), xlim=c(0,109),expand = FALSE)+
+# geom_point(data= cc.Eplease, aes(x= Total.monthly.Rainfall, y=E.pg.ml, shape=Sex, col=Sex), size = 3, position=position_jitter(height=0.001, width=0.2), alpha = 0.5)+
+  geom_smooth(data=try.my_data.e2,aes(ymin = low, ymax = high, x=Total.monthly.Rainfall, y = mu, group=Sex, col=Sex, fill=Sex, linetype=Sex), method="gam", formula=y ~ s(x,k=5, bs = "cs"))+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.20,0.25),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name="Total Monthly Rainfall (mm)")+scale_y_continuous(name=expression("E"["2"]*" (pg/ml)"))+scale_fill_manual(values = c("blue", "red")) +
+      scale_color_manual(values = c("blue", "red")) +
+  scale_linetype_manual(values = c("solid","dashed")) 
+
+#ggsave(file="5e2_rainplot.png",erainplot,width=5.5,height=5)
+
+erainplotraw<-ggplot()+
+ geom_point(data= cc.E, aes(x= Total.monthly.Rainfall, y=E.pg.ml, shape=Sex, col=Sex), size = 3, position=position_jitter(height=0.001, width=0.2), alpha = 0.5)+
+  geom_smooth(data=try.my_data.e2,aes(ymin = low, ymax = high, x=Total.monthly.Rainfall, y = mu, group=Sex, col=Sex, fill=Sex, linetype=Sex), method="gam", formula=y ~ s(x,k=5, bs = "cs"))+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.55,0.8),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name="Total Monthly Rainfall (mm)")+scale_y_continuous(name=expression("E"["2"]*" (pg/ml)"))+scale_fill_manual(values = c("blue", "red")) +
+      scale_color_manual(values = c("blue", "red")) +
+  scale_linetype_manual(values = c("solid","dashed")) 
+
+#ggsave(file="5e2raw_rainplot.png",erainplotraw,width=5.5,height=5)
+
+#to replicate the condition plot
+e2conditionplot<-ggplot()+
+  #geom_point(data= cc.Eplease, aes(x= ConditionResiduals, y=E.pg.ml, shape=Sex, col=Sex), size = 3, position=position_jitter(height=0.001, width=0.2), alpha = 0.5)+
+  geom_smooth(data=try.my_data.e2,aes(ymin = low, ymax = high, x=ConditionResiduals, y = mu), col='black', method="gam", formula=y ~ s(x,k=4, bs = "cs"))+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.2,0.8),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name=expression("Body condition residuals"))+scale_y_continuous(name=expression("E"["2"]*" (pg/ml)")) +
+  scale_fill_manual(values = c("blue", "red")) +
+      scale_color_manual(values = c("blue", "red"))
+
+#ggsave(file="6e2_conditionplot.png",e2conditionplot,width=5.5,height=5)
+
+e2conditionplotraw<-ggplot()+
+  geom_point(data= cc.E, aes(x= ConditionResiduals, y=E.pg.ml, shape=Sex, col=Sex), size = 3, position=position_jitter(height=0.001, width=0.2), alpha = 0.5)+
+  geom_smooth(data=try.my_data.e2,aes(ymin = low, ymax = high, x=ConditionResiduals, y = mu), col='black', method="gam", formula=y ~ s(x,k=4, bs = "cs"))+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.2,0.8),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name=expression("Body condition residuals"))+scale_y_continuous(name=expression("E"["2"]*" (pg/ml)")) +
+  scale_fill_manual(values = c("blue", "red")) +
+      scale_color_manual(values = c("blue", "red"))
+
+#ggsave(file="6e2raw_conditionplot.png",e2conditionplotraw,width=5.5,height=5)
+
+##
+##
+##
+##IGF
+######
+
+#to replicate the m vs f rainfall plot
+
+IGF1rainplot<-ggplot()+
+   coord_cartesian(ylim = c(45, 320), xlim=c(0,109),expand = FALSE)+
+ #geom_point(data= cc.IGF1, aes(x= Total.monthly.Rainfall, y=IGF.1.ng.ml, shape=Sex, col=Sex), size = 3, position=position_jitter(height=0.001, width=0.2), alpha = 0.5)+
+  geom_smooth(data=try.my_data.IGF1,aes(ymin = low, ymax = high, x=Total.monthly.Rainfall, y = mu, group=Sex, col=Sex, fill=Sex, linetype=Sex), method="gam", formula=y ~ s(x,k=4, bs = "cs"))+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.25,0.8),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name="Total Monthly Rainfall (mm)")+scale_y_continuous(name=expression("IGF-1 (ng/ml)"),breaks=c(45,100,150,200,250,300))+scale_fill_manual(values = c("blue", "red")) +
+      scale_color_manual(values = c("blue", "red")) +
+  scale_linetype_manual(values = c("solid","dashed")) 
+
+#ggsave(file="11IGF1_rainplot.png",IGF1rainplot,width=5.5,height=5)
+
+IGF1rainplotraw<-ggplot()+
+ geom_point(data= cc.IGF1, aes(x= Total.monthly.Rainfall, y=IGF.1.ng.ml, shape=Sex, col=Sex), size = 3, position=position_jitter(height=0.001, width=0.2), alpha = 0.5)+
+  geom_smooth(data=try.my_data.IGF1,aes(ymin = low, ymax = high, x=Total.monthly.Rainfall, y = mu, group=Sex, col=Sex, fill=Sex, linetype=Sex), method="gam", formula=y ~ s(x,k=4, bs = "cs"))+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.65,0.85),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name="Total Monthly Rainfall (mm)")+scale_y_continuous(name=expression("IGF-1 (ng/ml)"))+scale_fill_manual(values = c("blue", "red")) +
+      scale_color_manual(values = c("blue", "red")) +
+  scale_linetype_manual(values = c("solid","dashed")) 
+
+#ggsave(file="11IGF1raw_rainplot.png",IGF1rainplotraw,width=5.5,height=5)
+#if not raw legend.position = c(0.2,0.8)
+#if not raw save width=5,height=4.5
+
+#to replicate the condition plot
+
+IGF1conditionplot<-ggplot()+
+  #geom_point(data= cc.IGF1, aes(x= ConditionResiduals, y=IGF.1.ng.ml, shape=Sex, col=Sex), size = 3, position=position_jitter(height=0.001, width=0.2), alpha = 0.5)+
+  geom_smooth(data=try.my_data.IGF1,aes(ymin = low, ymax = high, x=ConditionResiduals, y = mu), col='black', method="gam", formula=y ~ s(x,k=4, bs = "cs"))+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.25,0.85),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name=expression("Body condition residuals"))+scale_y_continuous(name=expression("IGF-1 (ng/ml)")) +
+  scale_fill_manual(values = c("blue", "red")) +
+      scale_color_manual(values = c("blue", "red"))
+
+#ggsave(file="12IGF1_condplotprox.png",IGF1conditionplot,width=5.5,height=5)
+
+IGF1conditionplotraw<-ggplot()+
+   coord_cartesian(ylim = c(0, 380), xlim=c(-160,218),expand = FALSE)+
+  geom_point(data= cc.IGF1, aes(x= ConditionResiduals, y=IGF.1.ng.ml, shape=Sex, col=Sex), size = 3, position=position_jitter(height=0.001, width=0.2), alpha = 0.5)+
+  geom_smooth(data=try.my_data.IGF1,aes(ymin = low, ymax = high, x=ConditionResiduals, y = mu), col='black', method="gam", formula=y ~ s(x,k=4, bs = "cs"))+
+  set_theme(axis.textcolor.y = "black",axis.textcolor.x = "black", axis.title.color = "black",base = theme_classic()) + theme(text = element_text(size=20,family="Arial",lineheight=unit(2,"line")), legend.position = c(0.85,0.85),legend.key.width=unit(3,"line"),legend.key.size = unit(1.5,"line"),legend.key = element_rect(fill = NA),legend.background = element_rect(fill=NA,linewidth = 0),legend.box.background = element_rect(fill=NA,linewidth = 0))+guides(shape = guide_legend(override.aes = list(size = 7))) +scale_x_continuous(name=expression("Body condition residuals"),breaks=c(-100,0,100,200))+scale_y_continuous(name=expression("IGF-1 (ng/ml)")) +
+  scale_fill_manual(values = c("blue", "red")) +
+      scale_color_manual(values = c("blue", "red"))
+
+#ggsave(file="12IGF1raw_condplotprox.png",IGF1conditionplotraw,width=5.5,height=5)
+
+```
+
+plot layouts
+```{r}
+
+figure2<-trainplot+erainplot+IGF1rainplot+ plot_layout(ncol = 3)+plot_annotation(tag_levels = list(c('a','b','c'))) &
+    theme(text = element_text(size=25,family="Arial",lineheight=unit(2,"line")))
+
+ggsave(file="1_figure2.png",figure2,width=18.5,height=6,dpi=300)
+
+suppfigure1<-a4conditionplotraw+tconditionplotraw+e2conditionplotraw+ plot_layout(ncol = 3)+plot_annotation(tag_levels = list(c('a', 'b', 'c'))) &
+    theme(text = element_text(size=25,family="Arial",lineheight=unit(2,"line")))
+
+ggsave(file="1_suppfigure1.png",suppfigure1,width=18.5,height=6,dpi=300)
+
+```
+
+raw supp figures
+```{r}
+
+newsuppfig3<- IGF1conditionplotraw+cplotweightsexraw+cplotweighttrtraw+plot_annotation(tag_levels = "a") &
+    theme(text = element_text(size=25,family="Arial",lineheight=unit(2,"line")))
+ggsave(file="1_newsuppfigure3raw.jpeg",newsuppfig3,width=20,height=6,dpi=300)
+
+newsuppfig1h<-cplota4tryraw+cplottsexraw+cplote2sexraw+cplotIGFsexraw+
+  cplota4trytrtraw+cplotttrtraw+cplote2trtraw+cplotIGFtrtraw+ plot_layout(nrow = 2)+plot_annotation(tag_levels = list(c('a', 'c','e', 'g','b', 'd','f', 'h')))&
+    theme(text = element_text(size=25,family="Arial",lineheight=unit(2,"line")))
+ggsave(file="1_newsuppfigure1rawhorizontal.jpeg",newsuppfig1h,width=30,height=14,dpi=300)
+
+
+newsuppfigure2raw<-trainplotraw+erainplotraw+IGF1rainplotraw+plot_annotation(tag_levels = 'a') &
+    theme(text = element_text(size=25,family="Arial",lineheight=unit(2,"line")))
+ggsave(file="1_newsuppfigure2raw.jpeg",newsuppfigure2raw,width=18,height=6,dpi=300)
+
+```
+
+
+```{r}
+#sex individ count DC
+pup.a4DC<- pup.a4.cry[ which(pup.a4.cry$Treatment%in%c('C') ), ]
+#pup.a4DCF<- pup.a4DC[ which(pup.a4DC$Sex%in%c('F') ), ]
+#length(unique(pup.a4DCF$KMP.ID))
+count(pup.a4DC[ which(pup.a4DC$Sex%in%c('F') ), ])
+#pup.a4DCM<- pup.a4DC[ which(pup.a4DC$Sex%in%c('M') ), ]
+#length(unique(pup.a4DCM$KMP.ID))
+count(pup.a4DC[ which(pup.a4DC$Sex%in%c('M') ), ])
+
+#all dc
+length(unique(pup.a4DC$KMP.ID))
+#litter count DC
+length(unique(pup.a4DC$Litter))
+
+#sex individ count SC
+pup.a4SC<- pup.a4.cry[ which(pup.a4.cry$Treatment%in%c('S') ), ]
+#pup.a4SCF<- pup.a4SC[ which(pup.a4SC$Sex%in%c('F') ), ]
+#length(unique(pup.a4SCF$KMP.ID))
+count(pup.a4SC[ which(pup.a4SC$Sex%in%c('F') ), ])
+#pup.a4SCM<- pup.a4SC[ which(pup.a4SC$Sex%in%c('M') ), ]
+#length(unique(pup.a4SCM$KMP.ID))
+count(pup.a4SC[ which(pup.a4SC$Sex%in%c('M') ), ])
+
+#all sc
+length(unique(pup.a4SC$KMP.ID))
+#litter count SC
+length(unique(pup.a4SC$Litter))
+
+#sex individ count DT
+pup.a4DT<- pup.a4.cry[ which(pup.a4.cry$Treatment%in%c('F') ), ]
+#pup.a4DTF<- pup.a4DT[ which(pup.a4DT$Sex%in%c('F') ), ]
+#length(unique(pup.a4DTF$KMP.ID))
+count(pup.a4DT[ which(pup.a4DT$Sex%in%c('F') ), ])
+#pup.a4DTM<- pup.a4DT[ which(pup.a4DT$Sex%in%c('M') ), ]
+#length(unique(pup.a4DTM$KMP.ID))
+count(pup.a4DT[ which(pup.a4DT$Sex%in%c('M') ), ])
+
+#all dt
+length(unique(pup.a4DT$KMP.ID))
+#litter count DT
+length(unique(pup.a4DT$Litter))
+
+#total offspring
+length(unique(pup.a4.cry$KMP.ID))
+pupm<-pup.a4.cry[ which(pup.a4.cry$Sex%in%c('M') ), ]
+length(unique(pupm$KMP.ID))
+count(pup.a4.cry[ which(pup.a4.cry$Sex%in%c('M') ), ])
+pupf<-pup.a4.cry[ which(pup.a4.cry$Sex%in%c('F') ), ]
+length(unique(pupf$KMP.ID))
+count(pup.a4.cry[ which(pup.a4.cry$Sex%in%c('F') ), ])
+
+#total moms
+length(unique(pup.a4.cry$Mother))
+length(unique(pup.a4DC$Mother))
+length(unique(pup.a4SC$Mother))
+length(unique(pup.a4DT$Mother))
+#total litters
+length(unique(pup.a4.cry$Litter))
+#number captures by treatment
+table(pup.a4.cry$Treatment)
+#number captures by treatment per month
+table(pup.a4.cry$Age.Months,pup.a4.cry$Treatment)
+#total number of captures by month
+table(pup.a4.cry$Age.Months)
+
+```
